@@ -1,112 +1,139 @@
-"""Render the Leonida County traffic citation meme (1080x1350) for make.fun's gta6-meme-x-01.
+"""Render the Leonida County traffic citation meme for make.fun's gta6-meme-x-01.
 
-A fake official citation: every line item is a GTA 6 joke, the total is the game's
-price, and make.fun is the county's own printed logo and the payer of the fine.
+Rules that shape this file (see ~/makefun-playbook/IMAGE-GEN.md and the kit's RULES.txt):
+  * the entry picture is at most 512 px a side, and the judge shrinks it into
+    768x480 and never enlarges it, so the canvas is exactly 512x512 and every
+    piece of text has to survive that size;
+  * it is a document, not a scene: the format the leaderboard rewards is a fake
+    official paper whose line items are the jokes;
+  * make.fun's own mark-1024.png is the institution's letterhead, not a sticker.
 """
-import os
+import sys
+from pathlib import Path
+
 from PIL import Image, ImageDraw, ImageFont
 
-W, H = 1080, 1350
+W = H = 512
+HERE = Path(__file__).resolve().parent.parent
+GHOST_PATH = HERE / "assets" / "mark-1024.png"
+
 FB = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 FR = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 FM = "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf"
-PAPER = (246, 242, 231)
-INKC = (26, 24, 22)
-BLUE = (32, 62, 116)
-REDC = (176, 44, 34)
+
+PAPER = (247, 243, 233)
+INKC = (24, 22, 20)
+BLUE = (28, 54, 104)
+REDC = (178, 40, 32)
 MAG = (232, 38, 130)
-GREY = (108, 102, 94)
+GREY = (110, 104, 96)
+ROW = (237, 231, 216)
 
 
-def main():
+def f(path, size):
+    return ImageFont.truetype(path, size)
+
+
+def fit(d, text, path, size, max_w):
+    """Shrink the font until the text fits, so nothing is ever clipped."""
+    while size > 11:
+        fo = f(path, size)
+        if d.textlength(text, font=fo) <= max_w:
+            return fo
+        size -= 1
+    return f(path, 11)
+
+
+def stamp(img, text, cx, cy, box, colour, angle=-11, size=34):
+    layer = Image.new("RGBA", (box[0], box[1]), (0, 0, 0, 0))
+    sd = ImageDraw.Draw(layer)
+    sd.rounded_rectangle([4, 4, box[0] - 5, box[1] - 5], 10, outline=colour + (235,), width=4)
+    fo = fit(sd, text, FB, size, box[0] - 30)
+    tw = sd.textlength(text, font=fo)
+    sd.text(((box[0] - tw) / 2, box[1] / 2 - size * 0.62), text, font=fo, fill=colour + (235,))
+    layer = layer.rotate(angle, expand=True, resample=Image.BICUBIC)
+    img.paste(layer, (int(cx - layer.width / 2), int(cy - layer.height / 2)), layer)
+
+
+def main(out_path):
     img = Image.new("RGB", (W, H), PAPER)
     d = ImageDraw.Draw(img)
 
-    # letterhead band
-    d.rectangle([0, 0, W, 132], fill=BLUE)
-    d.ellipse([26, 12, 158, 144], fill=(255, 255, 255))
-    ghost = Image.open("assets/makefun-ghost.png").convert("RGBA")
-    ghost = ghost.resize((120, 120), Image.LANCZOS)
-    img.paste(ghost, (32, 18), ghost.split()[-1])
-    d.text((176, 24), "LEONIDA COUNTY", font=ImageFont.truetype(FB, 46), fill=(255, 255, 255))
-    d.text((176, 76), "OFFICE OF TRAFFIC AND GAME RELEASES", font=ImageFont.truetype(FR, 21), fill=(206, 218, 240))
-    f_no = ImageFont.truetype(FM, 20)
-    d.text((W - 300, 26), "CITATION No. VI-13-2013", font=f_no, fill=(255, 255, 255))
-    d.text((W - 300, 52), "ISSUED 19 NOV 2026", font=f_no, fill=(206, 218, 240))
-    d.text((W - 300, 78), "OFFICER: make.fun bot", font=f_no, fill=(206, 218, 240))
+    # ---- letterhead: make.fun's own mark sits beside the county's name
+    d.rectangle([0, 0, W, 70], fill=BLUE)
+    d.ellipse([8, 4, 72, 68], fill=(255, 255, 255))
+    g = Image.open(GHOST_PATH).convert("RGBA")
+    bb = g.getchannel("A").getbbox()
+    if bb:
+        g = g.crop(bb)
+    g = g.resize((56, 56), Image.LANCZOS)
+    img.paste(g, (12, 8), g.split()[-1])
+    d.text((82, 10), "LEONIDA COUNTY", font=f(FB, 26), fill=(255, 255, 255))
+    d.text((82, 40), "OFFICE OF TRAFFIC AND GAME RELEASES", font=f(FR, 11), fill=(200, 214, 238))
+    d.text((W - 136, 14), "CITATION No. VI-13", font=f(FM, 11), fill=(255, 255, 255))
+    d.text((W - 136, 30), "ISSUED 19 NOV 2026", font=f(FM, 11), fill=(200, 214, 238))
+    d.text((W - 136, 46), "BY: make.fun bot", font=f(FM, 11), fill=(200, 214, 238))
 
-    # parties
-    d.text((54, 158), "VIOLATOR", font=ImageFont.truetype(FB, 17), fill=GREY)
-    d.text((54, 180), "EVERY GTA FAN, 2013-2026", font=ImageFont.truetype(FB, 30), fill=INKC)
-    d.text((600, 158), "VEHICLE", font=ImageFont.truetype(FB, 17), fill=GREY)
-    d.text((600, 180), "PRE-ORDER, 200 GB", font=ImageFont.truetype(FB, 30), fill=INKC)
+    # ---- parties
+    d.text((16, 80), "VIOLATOR", font=f(FB, 10), fill=GREY)
+    d.text((16, 93), "EVERY GTA FAN, 2013-2026", font=f(FB, 17), fill=INKC)
+    d.text((300, 80), "VEHICLE", font=f(FB, 10), fill=GREY)
+    d.text((300, 93), "PRE-ORDER, 200 GB", font=f(FB, 17), fill=INKC)
 
-    # table
-    y = 244
-    d.rectangle([54, y, W - 54, y + 44], fill=INKC)
-    d.text((70, y + 11), "CODE", font=ImageFont.truetype(FB, 18), fill=(255, 255, 255))
-    d.text((210, y + 11), "VIOLATION", font=ImageFont.truetype(FB, 18), fill=(255, 255, 255))
-    d.text((W - 190, y + 11), "FINE (USD)", font=ImageFont.truetype(FB, 18), fill=(255, 255, 255))
-    y += 44
+    # ---- itemised fines: every row is its own joke
+    y = 124
+    d.rectangle([16, y, W - 16, y + 24], fill=INKC)
+    d.text((24, y + 5), "CODE", font=f(FB, 11), fill=(255, 255, 255))
+    d.text((110, y + 5), "VIOLATION", font=f(FB, 11), fill=(255, 255, 255))
+    d.text((W - 92, y + 5), "FINE", font=f(FB, 11), fill=(255, 255, 255))
+    y += 24
 
     rows = [
-        ("13-2013", "WAITING 13 YEARS FOR A SEQUEL", 45.00),
-        ("200-GB", "200 GB DOWNLOAD ON LAUNCH DAY", 15.00),
-        ("SICK-01", "CALLING IN SICK ON LAUNCH MORNING", 25.00),
-        ("LEON-04", "NO INDICATOR INTO A FLORIDA SUNSET", 30.00),
-        ("JAS-LUC", "ABANDONING JASON AND LUCIA AT 3 AM", 20.00),
-        ("DLC-99", "THE SHARK CARD YOU SWORE YOU WOULDN'T", 65.00),
+        ("13-2013", "WAITING 13 YEARS FOR A SEQUEL", "45.00"),
+        ("200-GB", "200 GB DOWNLOAD ON LAUNCH DAY", "15.00"),
+        ("SICK-01", "CALLING IN SICK THAT MORNING", "25.00"),
+        ("LEON-04", "NO INDICATOR INTO A FLORIDA SUNSET", "30.00"),
+        ("JAS-LUC", "LEAVING JASON AND LUCIA AT 3 AM", "20.00"),
+        ("DLC-99", "THE SHARK CARD YOU SWORE YOU WOULDN'T", "65.00"),
     ]
-    fmono = ImageFont.truetype(FM, 22)
-    frow = ImageFont.truetype(FB, 24)
     for i, (code, text, fine) in enumerate(rows):
         if i % 2 == 0:
-            d.rectangle([54, y, W - 54, y + 52], fill=(238, 233, 220))
-        d.text((70, y + 14), code, font=fmono, fill=BLUE)
-        line = text
-        while d.textbbox((0, 0), line, font=frow)[2] > (W - 54 - 20) - 210 and len(line) > 4:
-            line = line[:-2]
-        d.text((210, y + 13), line, font=frow, fill=INKC)
-        d.text((W - 186, y + 14), f"{fine:>7.2f}", font=fmono, fill=INKC)
-        y += 52
+            d.rectangle([16, y, W - 16, y + 30], fill=ROW)
+        d.text((22, y + 9), code, font=f(FM, 12), fill=BLUE)
+        fo = fit(d, text, FB, 14, (W - 92) - 112)
+        d.text((110, y + 8), text, font=fo, fill=INKC)
+        d.text((W - 92, y + 9), fine, font=f(FM, 12), fill=INKC)
+        y += 30
 
-    # totals
-    d.line([54, y + 6, W - 54, y + 6], fill=INKC, width=3)
-    d.text((210, y + 20), "TOTAL DUE", font=ImageFont.truetype(FB, 30), fill=INKC)
-    d.text((W - 210, y + 16), "200.00", font=ImageFont.truetype(FB, 40), fill=INKC)
-    y += 74
+    # ---- total
+    d.line([16, y + 4, W - 16, y + 4], fill=INKC, width=2)
+    d.text((110, y + 10), "TOTAL DUE", font=f(FB, 17), fill=INKC)
+    d.text((W - 108, y + 6), "200.00", font=f(FB, 24), fill=INKC)
+    y += 36
 
-    # stamp strip: its own band, so it never sits over the fine column
-    d.rectangle([54, y, W - 54, y + 104], fill=(250, 245, 236))
-    sx, sy = 78, y + 6
-    d.ellipse([sx, sy, sx + 196, sy + 92], outline=REDC, width=6)
-    d.text((sx + 34, sy + 12), "AGENT", font=ImageFont.truetype(FB, 34), fill=REDC)
-    d.text((sx + 30, sy + 46), "PAID", font=ImageFont.truetype(FB, 34), fill=REDC)
-    d.text((sx + 250, y + 30), "SETTLED ON SOLANA", font=ImageFont.truetype(FB, 26), fill=GREY)
-    y += 116
+    # ---- the turn, plus make.fun as the payer, inside the document
+    d.rectangle([16, y, W - 16, y + 116], fill=(255, 255, 255), outline=INKC, width=2)
+    d.text((26, y + 8), "PAYMENT RECEIVED - IN FULL", font=f(FB, 15), fill=REDC)
+    d.text((26, y + 30), "PAID BY: my AI agent, from", font=f(FB, 14), fill=INKC)
+    d.text((26, y + 48), "make.fun bounty winnings", font=f(FB, 14), fill=INKC)
+    d.text((26, y + 70), "AI agents enter bounties there", font=f(FR, 11), fill=GREY)
+    d.text((26, y + 84), "and win real USDC. This one", font=f(FR, 11), fill=GREY)
+    d.text((26, y + 98), "covered a $200 fine.", font=f(FR, 11), fill=GREY)
+    stamp(img, "AGENT PAID", 404, y + 46, (128, 52), REDC, angle=-13, size=21)
+    y += 128
 
-    # payment block: the joke's turn + the make.fun pitch inside the document
-    d.rectangle([54, y, W - 54, y + 210], fill=(255, 255, 255), outline=INKC, width=3)
-    d.text((74, y + 16), "PAYMENT RECEIVED - IN FULL", font=ImageFont.truetype(FB, 26), fill=REDC)
-    d.text((74, y + 56), "PAID BY: my AI agent, from make.fun bounty winnings", font=ImageFont.truetype(FB, 25), fill=INKC)
-    d.text((74, y + 92), "AI agents enter bounties on make.fun and win real USDC.", font=ImageFont.truetype(FR, 23), fill=GREY)
-    d.text((74, y + 124), "This one covered a $200 fine in an afternoon.", font=ImageFont.truetype(FR, 23), fill=GREY)
-    d.text((74, y + 164), "NO FINE IS OWED. CASE CLOSED.", font=ImageFont.truetype(FB, 24), fill=BLUE)
+    # ---- footer: wordmark, signature line
+    d.text((16, y + 4), "make.fun", font=f(FB, 26), fill=MAG)
+    d.text((16, y + 36), "AI agents build software for cash rewards", font=f(FR, 11), fill=GREY)
+    d.line([W - 150, y + 34, W - 16, y + 34], fill=INKC, width=1)
+    d.text((W - 150, y + 8), "SIGNED: the ghost", font=f(FR, 11), fill=GREY)
 
-    y += 226
-
-    # footer: make.fun wordmark + signature line
-    d.line([54, y, W - 54, y], fill=GREY, width=2)
-    d.text((54, y + 12), "make.fun", font=ImageFont.truetype(FB, 46), fill=MAG)
-    d.text((54, y + 70), "AI agents build software for cash rewards", font=ImageFont.truetype(FR, 21), fill=GREY)
-    d.text((W - 360, y + 18), "SIGNED: the ghost", font=ImageFont.truetype(FR, 20), fill=GREY)
-    d.line([W - 360, y + 74, W - 54, y + 74], fill=INKC, width=2)
-    d.text((W - 360, y + 82), "AUTHORISED AGENT", font=ImageFont.truetype(FB, 16), fill=GREY)
-
-    img.save("meme.png", "PNG")
-    img.resize((int(480 * W / H), 480), Image.LANCZOS).save("/tmp/meme-cite-480.png")
-    print("wrote meme.png", os.path.getsize("meme.png"), "bytes", img.size)
+    img.save(out_path, "PNG")
+    # the size the judge actually sees: 512 shrunk into 480x480
+    img.resize((480, 480), Image.LANCZOS).save("/tmp/cite-judge-480.png")
+    print(f"wrote {out_path} {Path(out_path).stat().st_size} bytes {img.size}")
+    print("judge preview /tmp/cite-judge-480.png 480x480")
 
 
 if __name__ == "__main__":
-    main()
+    main(sys.argv[1] if len(sys.argv) > 1 else str(HERE / "meme.png"))
